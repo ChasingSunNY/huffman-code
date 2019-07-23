@@ -1,0 +1,291 @@
+
+# coding: utf-8
+
+# In[1]:
+
+import matplotlib.pyplot as plt
+import math
+import struct
+
+
+# # Part One
+
+# In[2]:
+
+
+def readFile(fn):
+    
+    arr = []
+    with open(fn, "rb") as f:
+
+        while True:
+            x = f.read(4)
+            if x == b'':
+                break
+    
+            arr.append(struct.unpack('i', x)[0])
+    
+    return arr
+
+
+# In[3]:
+
+def getDistribution(arr):
+    counts = {}
+    for v in arr:
+        if v not in counts:
+            counts[v] = 1
+        else:
+            counts[v] += 1
+            
+    ps = {x:(c * 1.0 / len(arr)) for x, c in counts.items()}
+    
+    return ps
+
+def computeEntroy(ps):
+    
+    return  - sum([p * math.log(p, 2) for p in ps.values()])
+
+#     return  - sum([p * math.log(p) for p in ps.values()])
+
+
+# In[4]:
+
+X = readFile("566.bin")
+x_ps = getDistribution(X)
+print("There are %d samples with %d differrent values in the data file"  %(len(X), len(x_ps)))
+
+
+# In[5]:
+
+# Histogram
+plt.hist(X, bins = 20)
+# plt.show()
+plt.savefig("hist.png")
+
+
+# In[6]:
+
+print("probability distribution of X")
+print(x_ps)
+
+
+# In[7]:
+
+x_entropy = computeEntroy(x_ps)
+print("X entropy H(X): %f" %x_entropy)
+
+
+# In[8]:
+
+Y = [ (X[i], X[i+1]) for i in range(len(X) - 1)]
+y_ps = getDistribution(Y)
+y_entropy = computeEntroy(y_ps)
+print("H(y)/2: %f" % (y_entropy/2))
+
+
+# In[9]:
+
+Z = [ (X[i], X[i+1], X[i+2]) for i in range(len(X) - 2)]
+z_ps = getDistribution(Z)
+z_entropy = computeEntroy(z_ps)
+print("H(Z)/3: %f" % (z_entropy/3))
+
+
+# # Part Two
+
+# In[10]:
+
+import heapq 
+
+
+def getEncoding(node, path, dic):
+    if node[1] is not None:
+        dic[node[1]] = path
+        
+    else:
+        getEncoding(node[2], path + "0", dic)
+        getEncoding(node[3], path + "1", dic)
+        
+def getEncodingRoot(root):
+    dic = {}
+    getEncoding(root, "", dic)
+    return dic
+
+def huffmanEncoding(seq):
+    
+    ps = getDistribution(seq)
+    
+    p = [(v, k, None, None) for (k, v) in ps.items()]
+
+    heapq.heapify(p)
+
+    while len(p) > 1:
+        l = heapq.heappop(p)
+        r = heapq.heappop(p)
+        m = (l[0] + r[0], None, l, r)
+        heapq.heappush(p, m)
+
+    root = p[0]
+    
+    dic = getEncodingRoot(root)
+
+    encoded = "".join([dic[x] for x in seq])
+    
+    encoded = encoded + "0" * (32 - len(encoded) % 32) 
+    
+    vs = []
+    for i in range(0, len(encoded), 32):
+        vs.append(int(encoded[i:(i+32)], 2))
+    
+#     print(len(vs))
+#     
+    return dic, vs, len(seq)
+
+
+
+    
+#     s = 
+
+#     #print(len(encoded))
+    
+# #     v = int(encoded, 2)
+    
+    
+
+# huffmanEncoding(X)
+# huffmanEncoding(Y)
+# huffmanEncoding(Z)
+
+
+# In[11]:
+
+def getBinStr(x):
+    
+    s = bin(x)
+    
+    s = s[2:]
+    
+    s = "0" * (32 - len(s)) + s
+    
+    return s
+
+def huffmanDecode(dic, vs, n):
+    
+#     print(dic)
+    
+    revDic = {v:k for k,v in dic.items()}
+    
+#     print(revDic)
+    
+    s = "".join(getBinStr(x) for x in vs)
+    
+    cur = ""
+    
+    seq = []
+    for i in range(len(s)):
+        cur = cur + s[i]
+        
+        if cur in revDic:
+            seq.append(revDic[cur])
+            cur = ""
+            
+            if len(seq) == n:
+                break
+            
+    
+    return seq
+            
+
+
+# In[13]:
+
+import pickle
+
+# An arbitrary collection of objects supported by pickle.
+data = {
+    'a': [1, 2.0, 3, 4+6j],
+    'b': ("character string", b"byte string"),
+    'c': {None, True, False}
+}
+
+
+
+def encode(input_fn, n, out_fn):
+    seq = readFile(input_fn)
+    if n > 1:
+        nseq = []
+        for i in range(len(seq) - n + 1):
+            nseq.append(tuple(seq[i:(i+n)]))
+        seq = nseq
+        
+    dic, vs, num = huffmanEncoding(seq)
+    
+    encodedFile = {"dic":dic, "vs":vs, "num":num}
+    
+    with open(out_fn, 'wb') as f:
+    
+        pickle.dump(encodedFile, f, pickle.HIGHEST_PROTOCOL)
+        
+def decode(input_fn, n, out_fn):
+    
+    with open(input_fn, 'rb') as f:
+        encodedFile = pickle.load(f)
+        
+    X_dec = huffmanDecode(encodedFile["dic"], encodedFile["vs"], encodedFile["num"])
+    
+    if n > 1:
+        seq = []
+        
+        for i in range(n):
+            seq.append(X_dec[0][i])
+        
+        for i in range(1, len(X_dec)):
+            seq.append(X_dec[i][n-1])
+            
+        X_dec = seq
+        
+        
+    with open(out_fn, "wb+") as f:
+        
+        for x in X_dec:
+            f.write(struct.pack("i", x))
+            
+        f.flush()
+        
+#     return X_dec
+
+
+
+# In[14]:
+
+encode("566.bin", 1, "1.encoded")
+decode("1.encoded", 1, "1.decode")
+
+
+# In[15]:
+
+encode("566.bin", 2, "2.encoded")
+decode("2.encoded", 2, "2.decode")
+
+
+# In[16]:
+
+encode("566.bin", 3, "3.encoded")
+decode("3.encoded", 3, "3.decode")
+
+
+# Encoing of $X_i$ has the smallest size
+
+# In[17]:
+
+entrop_rate_x = x_entropy
+entrop_rate_x
+
+
+# Because $X_i$ are i.i.d, thus the entropy rate of the sequence $X_i$ is just the entropy $H(X)$.
+
+# In[ ]:
+
+
+
